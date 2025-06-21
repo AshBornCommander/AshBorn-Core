@@ -5,6 +5,7 @@ from loguru import logger
 import os
 from datetime import datetime
 from bot.commands import parse_command
+from bot.brain import handle_command  # 🧠 AshBorn's command brain
 
 # Load environment variables
 load_dotenv()
@@ -25,9 +26,9 @@ def main():
 
     if command:
         logger.info(f"🚀 Executing action for command: {command}")
+        handle_command(command)  # 🧠 pass it to the command brain
     else:
         logger.info("🕵️ No actionable command found.")
 
 if __name__ == "__main__":
     main()
-
