@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from loguru import logger
 import os
 from datetime import datetime
-from bot.commands import parse_command  # 👈 new import
+from bot.commands import parse_command
 
 # Load environment variables
 load_dotenv()
@@ -19,10 +19,15 @@ logger.add(lambda msg: print(msg, end=""), level=LOG_LEVEL)
 def main():
     logger.info(f"\n🤖 [{BOT_NAME}] is waking up at {datetime.now().isoformat()}\n")
 
-    # 🧠 Simulate a command input
-    test_input = "Buy solana now"
-    command = parse_command(test_input)
-    logger.info(f"🧠 Detected command: {command}")
+    # Simulated incoming command message
+    raw_message = "buy SOL now"  # 🔮 This can later be fed from Telegram, Discord, etc.
+    command = parse_command(raw_message)
+
+    if command:
+        logger.info(f"🚀 Executing action for command: {command}")
+    else:
+        logger.info("🕵️ No actionable command found.")
 
 if __name__ == "__main__":
     main()
+
