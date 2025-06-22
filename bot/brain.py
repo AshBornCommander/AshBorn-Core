@@ -1,41 +1,48 @@
 # bot/brain.py
 """
 AshBorn’s ‘brain’ – where trading logic lives.
-Right now it only logs what it would do.  Later you can
+Phase I = simulation only.  
+  • BUY / SELL call the fake buyer  
+  • STATUS / REBALANCE just log actions
+
+Later you can:
   • call a real DEX / CEX SDK
-  • enqueue tasks
-  • run risk checks, etc.
+  • run risk-management checks
+  • push Telegram receipts, etc.
 """
 
 from loguru import logger
+from bot.buyer import simulate_buy             # ← new fake-buy helper
+# (there is no simulate_sell yet – we’ll add that later)
 
-# ------------------------------------------------------------------
+# ────────────────────────────────────────────────────────────────────
 def handle_command(cmd: dict | str) -> None:
     """
     Execute a parsed command.
 
-    Accepts:
-      • dict  – {'action': 'BUY', 'token': 'SOL', 'amount': 0.2}
+    Accepts either:
+      • dict  – {"action": "BUY", "token": "SOL", "amount": 0.2}
       • str   – legacy support ("BUY", "SELL", …)
     """
     # ── Back-compat: allow plain strings ───────────────────────────
     if isinstance(cmd, str):
         cmd = {"action": cmd.upper()}
 
-    action = cmd.get("action")
+    action = (cmd.get("action") or "").upper()
     token  = cmd.get("token")
     amount = cmd.get("amount")
 
     # ── BUY ────────────────────────────────────────────────────────
     if action == "BUY":
         logger.info(f"🚀 BUY signal → token={token} amount={amount}")
-        # TODO: insert real buy logic here
+        receipt = simulate_buy(token or "UNKNOWN", amount or 0.0)
+        logger.success(f"🧾  Fake-buy receipt → {receipt}")
         return
 
     # ── SELL ───────────────────────────────────────────────────────
     if action == "SELL":
         logger.info(f"💸 SELL signal → token={token} amount={amount}")
-        # TODO: insert real sell logic here
+        logger.warning("⚠️  SELL simulation not implemented yet")
         return
 
     # ── STATUS ─────────────────────────────────────────────────────
@@ -50,5 +57,5 @@ def handle_command(cmd: dict | str) -> None:
         # TODO: run rebalancing algorithm
         return
 
-    # ── Unknown ----------------------------------------------------
-    logger.warning(f"🤷‍♂️ No valid operation mapped for command: {cmd}")
+    # ── Unknown command ───────────────────────────────────────────
+    logger.warning(f"🤷‍♂️  No valid operation mapped for command: {cmd}")
