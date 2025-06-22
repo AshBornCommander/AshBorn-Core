@@ -18,6 +18,7 @@ except ImportError:
 from bot.commands import parse_command
 from bot.brain import handle_command        # 🧠 AshBorn's command brain
 from bot.realtime import watch_command_file # 🔁 Live command monitor
+from bot.telegram_bot import start_telegram_bot      # 📲 Telegram listener
 
 # ── Load environment variables ─────────────────────
 load_dotenv()
@@ -39,7 +40,12 @@ def main() -> None:
         + Style.RESET_ALL
     )
 
-    # Start watching the command.txt file for real-time commands
+    # ✅ Start Telegram bot listener in background
+    import threading
+    telegram_thread = threading.Thread(target=start_telegram_bot, daemon=True)
+    telegram_thread.start()
+
+    # 🔁 Start watching the command.txt file for real-time commands
     watch_command_file()                     # <— continuous loop
 
 # ── Entry-point guard ──────────────────────────────
