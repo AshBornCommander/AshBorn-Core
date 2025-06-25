@@ -1,16 +1,16 @@
 # bot/brain.py
 """
 AshBorn “Brain” – central command router + alpha-event promoter
-────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────
 Phase-0  = simulation only
-  • BUY / SELL → fake buyer
+  • BUY / SELL → fake buyer_engine
   • STATUS / REBALANCE → log only
-  • Alpha-events come from sniffer → auto-promoted to BUY
+  • Alpha events come from sniffer → auto-promoted to BUY
 
 Later you can:
-  • swap simulate_buy() for real DEX calls
+  • swap simulate_buy_token() for real DEX calls
   • plug risk-management filters
-  • push receipts to Telegram, DB, etc.
+  • push Telegram receipts, DB writes, etc.
 """
 
 from __future__ import annotations
@@ -21,70 +21,47 @@ from datetime import datetime, timezone
 from typing import Deque, Dict, Tuple
 
 from loguru import logger
+from bot.buyer_engine import simulate_buy_token
+from sniffers.bird_eye import fetch_latest_tokens  # ✅ New import
 
-from bot.buyer import simulate_buy  # fake BUY helper for now
-
-# ────────────────────────── Alpha queue ────────────────────────────
-# alpha_sniffer will call push_alpha_event(symbol, name)
+# ─────────────────── Alpha queue ───────────────────
 ALPHA_QUEUE: Deque[Dict[str, str]] = deque()
 
 
 def push_alpha_event(symbol: str, name: str) -> None:
-    """
-    Called from alpha_sniffer whenever a *fresh* pool is detected.
-    We enqueue a tiny dict; the brain will decide what to do.
-    """
-    ALPHA_QUEUE.append(
-        {
-            "symbol": symbol.upper(),
-            "name": name,
-            "ts": datetime.now(timezone.utc).isoformat(),
-        }
-    )
-    logger.debug(f"➕  Alpha event queued → {symbol}/{name}")
+    ALPHA_QUEUE.append({
+        "symbol": symbol.upper(),
+        "name": name,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    })
+    logger.debug(f"➕ Alpha event queued → {symbol}/{name}")
 
 
-# ─────────────────────── brain “manager” class ─────────────────────
+# ─────────────── brain “manager” class ───────────────
 class CommandBrain:
-    """
-    High-level coordinator that:
-
-      1. Watches ALPHA_QUEUE for new token events
-      2. Deduplicates by (symbol, ts)
-      3. Converts each *new* event to a BUY command (simulated for now)
-      4. Hands the BUY off to handle_command()
-
-    You can run its loop in the background:
-
-        brain = CommandBrain()
-        asyncio.create_task(brain.alpha_watcher_loop())
-    """
-
     def __init__(self) -> None:
-        self.seen: set[Tuple[str, str]] = set()  # (symbol, ts)
+        self.seen: set[Tuple[str, str]] = set()
 
     async def alpha_watcher_loop(self, poll: int = 5) -> None:
-        """Async loop: drain the queue every *poll* seconds."""
         logger.info("🧠 Alpha-watcher loop spun-up …")
         while True:
             self.analyze_alpha()
             await asyncio.sleep(poll)
 
     def analyze_alpha(self) -> None:
-        """Process all queued alpha events (non-blocking)."""
         processed = 0
         while ALPHA_QUEUE:
             evt = ALPHA_QUEUE.popleft()
             key = (evt["symbol"], evt["ts"])
             if key in self.seen:
-                continue  # duplicate
+                continue
             self.seen.add(key)
             processed += 1
 
             cmd = {
                 "action": "BUY",
                 "token": evt["symbol"],
-                "amount": 0.20,  # default snipe size (SOL) – tweak later
+                "amount": 0.20,
             }
             logger.info(f"🧠 Promoting alpha ⇒ BUY → {cmd}")
             handle_command(cmd)
@@ -92,16 +69,37 @@ class CommandBrain:
         if processed:
             logger.debug(f"🧠 AlphaBrain processed {processed} event(s).")
 
+    def simulate_birdeye_trades(self) -> None:
+        logger.info("📡 Checking BirdEye for fresh tokens …")
+        tokens = fetch_latest_tokens(limit=10)
+        shortlisted = []
 
-# ───────────────────────── command router ──────────────────────────
+        for t in tokens:
+            try:
+                if t.get("liquidity", 0) < 10_000:
+                    continue
+                if t.get("volume_24h_usd", 0) < 50_000:
+                    continue
+                if not t.get("name") or not t.get("symbol"):
+                    continue
+                if any(x in t["name"].lower() for x in ["test", "fake", "scam"]):
+                    continue
+                shortlisted.append(t)
+            except Exception as e:
+                logger.warning(f"⚠️ Token parse error: {e}")
+
+        for token in shortlisted:
+            cmd = {
+                "action": "BUY",
+                "token": token["symbol"],
+                "amount": 0.20,
+            }
+            logger.info(f"🧠 [BirdEye] Promoting filtered ⇒ BUY → {cmd}")
+            handle_command(cmd)
+
+
+# ─────────────── command router ───────────────
 def handle_command(cmd: dict | str) -> None:
-    """
-    Execute a parsed command.
-
-    Accepts either:
-      • dict – {"action": "BUY", "token": "SOL", "amount": 0.2}
-      • str  – legacy shorthand ("BUY", "SELL", …)
-    """
     if isinstance(cmd, str):
         cmd = {"action": cmd.upper()}
 
@@ -109,48 +107,41 @@ def handle_command(cmd: dict | str) -> None:
     token = cmd.get("token")
     amount = cmd.get("amount")
 
-    # BUY ──────────────────────────────────────────────────────────
     if action == "BUY":
         logger.info(f"🚀 BUY signal → token={token} amount={amount}")
-        receipt = simulate_buy(token or "UNKNOWN", amount or 0.0)
-        logger.success(f"🧾 Fake-buy receipt → {receipt}")
+        receipt = simulate_buy_token(token or "UNKNOWN", amount or 0.0)
+        logger.success(f"📟 Fake-buy receipt → {receipt}")
         return
 
-    # SELL ─────────────────────────────────────────────────────────
     if action == "SELL":
         logger.info(f"💸 SELL signal → token={token} amount={amount}")
-        logger.warning("⚠️  SELL simulation not implemented yet")
+        logger.warning("⚠️ SELL simulation not implemented yet")
         return
 
-    # STATUS ───────────────────────────────────────────────────────
     if action == "STATUS":
         logger.info("📊 STATUS check requested")
-        # TODO: fetch balances / PnL and reply
+        # TODO
         return
 
-    # REBALANCE ────────────────────────────────────────────────────
     if action == "REBALANCE":
         logger.info("⚖️ Portfolio rebalance requested")
-        # TODO: run rebalancing algorithm
+        # TODO
         return
 
-    # Unknown  ─────────────────────────────────────────────────────
     logger.warning(f"🤷‍♂️ Unknown command: {cmd}")
 
 
-# ─────────────────────── helper for main.py ────────────────────────
+# ───────── helper to launch watcher ─────────
 def launch_background_tasks(loop: asyncio.AbstractEventLoop | None = None) -> None:
-    """
-    Convenience: call from main.py to spin the alpha-watcher
-    alongside your other async services.
-    """
     if loop is None:
         loop = asyncio.get_event_loop()
     brain = CommandBrain()
     loop.create_task(brain.alpha_watcher_loop())
 
 
-# Quick self-test when run directly
+# ───────── quick self-test ─────────
 if __name__ == "__main__":
     push_alpha_event("TEST", "DemoToken")
-    CommandBrain().analyze_alpha()
+    brain = CommandBrain()
+    brain.analyze_alpha()
+    brain.simulate_birdeye_trades()  # ✅ Manual BirdEye trigger

@@ -1,23 +1,38 @@
 # sniffers/alpha_sniffer.py
 
+import asyncio
 import time
-import random
+from sniffers.bird_eye import fetch_latest_tokens
+from bot.brain import push_alpha_event
 
-seen_addresses = set()
+# Track seen token addresses to avoid duplicates
+seen_symbols = set()
 
-def simulate_fresh_listings():
-    mock_tokens = [
-        {"name": "PEPEKING", "address": "So1P3p3KingFakeA1phaToken"},
-        {"name": "RUGFREE", "address": "So1RugFreeAlphaExample"},
-        {"name": "BURNX100", "address": "So1BurnFastFakeListing"},
-    ]
+async def start_sniffer_loop(poll: int = 60):
+    """Periodically pull fresh tokens from BirdEye and push as alpha events."""
     while True:
-        token = random.choice(mock_tokens)
-        if token["address"] not in seen_addresses:
-            print(f"[ALPHA] New Token Detected: {token['name']} ({token['address']})")
-            seen_addresses.add(token["address"])
-        time.sleep(5)
+        print("🔎 Sniffer: Fetching new tokens from BirdEye...")
+        try:
+            tokens = fetch_latest_tokens(limit=15)
 
+            for token in tokens:
+                symbol = token.get("symbol")
+                name = token.get("name")
+
+                if not symbol or not name:
+                    continue
+                if symbol in seen_symbols:
+                    continue
+
+                seen_symbols.add(symbol)
+                print(f"[ALPHA] New Token Detected: {symbol} / {name}")
+                push_alpha_event(symbol, name)
+
+        except Exception as e:
+            print(f"⚠️ Sniffer error: {e}")
+
+        await asyncio.sleep(poll)
+
+# For manual testing
 if __name__ == "__main__":
-    simulate_fresh_listings()
-
+    asyncio.run(start_sniffer_loop())

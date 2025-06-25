@@ -8,17 +8,17 @@ from loguru import logger
 # ── Optional colour output ─────────────────────────
 try:
     from colorama import Fore, Style
-except ImportError:          # safe fallback if colorama missing
+except ImportError:  # safe fallback if colorama missing
     class Dummy:
         def __getattr__(self, _):  # noqa
             return ""
     Fore = Style = Dummy()
 # ───────────────────────────────────────────────────
 
-from bot.realtime      import watch_command_file          # 🔁 command.txt watcher
-from bot.telegram_bot  import start_telegram_bot          # 📲 Telegram listener
-from bot.alpha_sniffer import start_sniffer_loop          # 🔎 Solana token watcher
-from bot.brain         import launch_background_tasks     # 🧠 Alpha-Brain loop
+from bot.realtime      import watch_command_file         # 🔁 command.txt watcher
+from bot.telegram_bot  import start_telegram_bot         # 📲 Telegram listener
+from sniffers.alpha_sniffer import start_sniffer_loop         # 🔎 Solana token watcher
+from bot.brain         import launch_background_tasks    # 🧠 Alpha-Brain loop
 
 # ── ENV ─────────────────────────────────────────────
 load_dotenv()
@@ -66,9 +66,9 @@ def _start_sniffer_thread() -> None:
 def main() -> None:
     """AshBorn boot sequence."""
     logger.info(
-        Fore.CYAN
-        + f"\n🤖 [{BOT_NAME}] is waking up at {datetime.now().isoformat()} …\n"
-        + Style.RESET_ALL
+        Fore.CYAN +
+        f"\n🤖 [{BOT_NAME}] is waking up at {datetime.now().isoformat()} …\n" +
+        Style.RESET_ALL
     )
 
     # 1️⃣  Telegram remote-control interface
